@@ -1,209 +1,430 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PayU TOKC Generator</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f4f6f9; color: #1a1a2e; padding: 2rem; }
-    h1 { font-size: 1.4rem; margin-bottom: 1.5rem; color: #333; }
-    .card {
-      background: #fff; border-radius: 8px; padding: 1.5rem;
-      box-shadow: 0 1px 4px rgba(0,0,0,.1); margin-bottom: 1.5rem; max-width: 540px;
-    }
-    .card h2 { font-size: 1rem; margin-bottom: 1rem; color: #555; text-transform: uppercase; letter-spacing: .05em; }
-    .step-label {
-      display: inline-block; background: #0066cc; color: #fff;
-      border-radius: 50%; width: 1.4rem; height: 1.4rem; line-height: 1.4rem;
-      text-align: center; font-size: .75rem; margin-right: .5rem;
-    }
-    .field { margin-bottom: 1rem; }
-    label { display: block; font-size: .85rem; margin-bottom: .3rem; color: #666; }
-    input[type=text] {
-      width: 100%; padding: .5rem .7rem; border: 1px solid #ccc;
-      border-radius: 4px; font-size: .95rem;
-    }
-    #payu-card-number, #payu-card-date, #payu-card-cvv {
-      border: 1px solid #ccc; border-radius: 4px; padding: .4rem .6rem;
-      min-height: 2.4rem; background: #fafafa;
-    }
-    button {
-      background: #0066cc; color: #fff; border: none; border-radius: 4px;
-      padding: .55rem 1.2rem; font-size: .9rem; cursor: pointer;
-    }
-    button:disabled { background: #aaa; cursor: default; }
-    button:not(:disabled):hover { background: #0052a3; }
-    .result-box {
-      margin-top: 1rem; background: #1e1e2e; color: #cdd6f4;
-      border-radius: 4px; padding: 1rem; font-family: monospace; font-size: .8rem;
-      white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto;
-      display: none;
-    }
-    .result-box.visible { display: block; }
-    #redirect-link { margin-top: .6rem; font-size: .85rem; display: none; }
-    #redirect-link a { color: #0066cc; word-break: break-all; }
-    .test-card {
-      background: #fffbe6; border: 1px solid #ffe58f; border-radius: 6px;
-      padding: .75rem 1rem; margin-bottom: 1rem; font-size: .85rem;
-    }
-    .test-card strong { display: block; margin-bottom: .4rem; color: #7c5a00; }
-    .test-card table { border-collapse: collapse; width: 100%; }
-    .test-card td { padding: .15rem .5rem .15rem 0; color: #555; vertical-align: top; }
-    .test-card td:first-child { color: #888; white-space: nowrap; width: 7rem; }
-    .copy-btn {
-      background: none; border: 1px solid #ccc; color: #444; border-radius: 3px;
-      padding: .1rem .4rem; font-size: .75rem; cursor: pointer; margin-left: .4rem; vertical-align: middle;
-    }
-    .copy-btn:hover { background: #f0f0f0; }
-  </style>
-</head>
-<body>
-  <h1>PayU TOKC Generator — Dev Tool</h1>
-
-  <!-- Step 1: Tokenize card -->
-  <div class="card">
-    <h2><span class="step-label">1</span> Tokenize card (get TOK_TOKEN)</h2>
-    <div class="test-card">
-      <strong>Sandbox test card</strong>
-      <table>
-        <tr><td>Card number</td><td><code>4245757666349685</code><button class="copy-btn" onclick="copyText('4245757666349685', this)">copy</button></td></tr>
-        <tr><td>Expiry</td>     <td><code>12/29</code><button class="copy-btn" onclick="copyText('12/29', this)">copy</button></td></tr>
-        <tr><td>CVV</td>        <td><code>123</code><button class="copy-btn" onclick="copyText('123', this)">copy</button></td></tr>
-      </table>
-    </div>
-    <div class="field"><label>Card number</label><div id="payu-card-number"></div></div>
-    <div class="field"><label>Expiry date</label><div id="payu-card-date"></div></div>
-    <div class="field"><label>CVV</label><div id="payu-card-cvv"></div></div>
-    <button id="btn-tokenize" onclick="doTokenize()">Tokenize card</button>
-    <div class="result-box" id="tok-result"></div>
-  </div>
-
-  <!-- Step 2: Create order -->
-  <div class="card">
-    <h2><span class="step-label">2</span> Create order &amp; get 3DS redirect</h2>
-    <div class="field">
-      <label>TOK_TOKEN (filled automatically after step 1)</label>
-      <input type="text" id="tok-token-input" placeholder="TOKC_…" />
-    </div>
-    <button id="btn-order" onclick="doCreateOrder()">Create order</button>
-    <div class="result-box" id="order-result"></div>
-    <div id="redirect-link"></div>
-  </div>
-
-  <!-- Step 3: Retrieve TOKC -->
-  <div class="card">
-    <h2><span class="step-label">3</span> Retrieve TOKC_ (after completing 3DS)</h2>
-    <p style="font-size:.85rem;color:#666;margin-bottom:.8rem">
-      Complete the 3DS flow in the link above first, then click below.
-    </p>
-    <button id="btn-tokc" onclick="doGetTokc()">Get TOKC_</button>
-    <div class="result-box" id="tokc-result"></div>
-  </div>
-
-  <script src="https://secure.snd.payu.com/javascript/sdk"></script>
-  <script>
-    function copyText(text, btn) {
-      navigator.clipboard.writeText(text).then(() => {
-        const orig = btn.textContent;
-        btn.textContent = 'copied!';
-        setTimeout(() => { btn.textContent = orig; }, 1200);
-      });
-    }
-
-    let payuSdkForms, secureForms;
-
-    fetch('/api/config')
-      .then(r => r.json())
-      .then(({ posId }) => {
-        payuSdkForms = PayU(posId, { dev: true });
-        secureForms  = payuSdkForms.secureForms();
-        secureForms.add('number', { placeholder: '4245757666349685' }).render('#payu-card-number');
-        secureForms.add('date',   { placeholder: '12/29' }).render('#payu-card-date');
-        secureForms.add('cvv',    { placeholder: '123'   }).render('#payu-card-cvv');
-      })
-      .catch(err => showResult('tok-result', { error: 'Could not load config: ' + err }));
-
-    function showResult(id, data) {
-      const el = document.getElementById(id);
-      el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-      el.className = 'result-box visible';
-    }
-
-    // Step 1
-    async function doTokenize() {
-      const btn = document.getElementById('btn-tokenize');
-      btn.disabled = true;
-      try {
-        const result = await payuSdkForms.tokenize('MULTI');
-        showResult('tok-result', result);
-        const token = result.body && result.body.token;
-        if (result.status === 'SUCCESS' && token) {
-          document.getElementById('tok-token-input').value = token;
-        }
-      } catch (e) {
-        showResult('tok-result', { error: String(e) });
-      } finally {
-        btn.disabled = false;
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PayU TOKC Generator</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
       }
-    }
+      body {
+        font-family: system-ui, sans-serif;
+        background: #f4f6f9;
+        color: #1a1a2e;
+        padding: 2rem;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin-bottom: 1.5rem;
+        color: #333;
+        text-align: center;
+      }
+      .card {
+        background: #fff;
+        border-radius: 8px;
+        padding: 1.5rem;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        margin: 0 auto 1.5rem;
+        max-width: 540px;
+      }
+      .card h2 {
+        font-size: 1rem;
+        margin-bottom: 1rem;
+        color: #555;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .step-label {
+        display: inline-block;
+        background: #0066cc;
+        color: #fff;
+        border-radius: 50%;
+        width: 1.4rem;
+        height: 1.4rem;
+        line-height: 1.4rem;
+        text-align: center;
+        font-size: 0.75rem;
+        margin-right: 0.5rem;
+      }
+      .field {
+        margin-bottom: 1rem;
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 0.3rem;
+        color: #666;
+      }
+      input[type="text"] {
+        width: 100%;
+        padding: 0.5rem 0.7rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 0.95rem;
+      }
+      #payu-card-number,
+      #payu-card-date,
+      #payu-card-cvv {
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 0.4rem 0.6rem;
+        min-height: 2.4rem;
+        background: #fafafa;
+      }
+      button {
+        background: #0066cc;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        padding: 0.55rem 1.2rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+      button:disabled {
+        background: #aaa;
+        cursor: default;
+      }
+      button:not(:disabled):hover {
+        background: #0052a3;
+      }
+      .result-box {
+        margin-top: 1rem;
+        background: #1e1e2e;
+        color: #cdd6f4;
+        border-radius: 4px;
+        padding: 1rem;
+        font-family: monospace;
+        font-size: 0.8rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 260px;
+        overflow-y: auto;
+        display: none;
+      }
+      .result-box.visible {
+        display: block;
+      }
+      #redirect-link {
+        margin-top: 0.6rem;
+        font-size: 0.85rem;
+        display: none;
+      }
+      #redirect-link a {
+        color: #0066cc;
+        word-break: break-all;
+      }
+      .test-card {
+        background: #fffbe6;
+        border: 1px solid #ffe58f;
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+      }
+      .test-card strong {
+        display: block;
+        margin-bottom: 0.4rem;
+        color: #7c5a00;
+      }
+      .test-card table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      .test-card td {
+        padding: 0.15rem 0.5rem 0.15rem 0;
+        color: #555;
+        vertical-align: top;
+      }
+      .test-card td:first-child {
+        color: #888;
+        white-space: nowrap;
+        width: 7rem;
+      }
+      .copy-btn {
+        background: none;
+        border: 1px solid #ccc;
+        color: #444;
+        border-radius: 3px;
+        padding: 0.1rem 0.4rem;
+        font-size: 0.75rem;
+        cursor: pointer;
+        margin-left: 0.4rem;
+        vertical-align: middle;
+      }
+      .copy-btn:hover {
+        background: #f0f0f0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PayU TOKC Generator — Dev Tool</h1>
 
-    // Step 2
-    async function doCreateOrder() {
-      const tokToken = document.getElementById('tok-token-input').value.trim();
-      if (!tokToken) { alert('Please tokenize the card first (step 1)'); return; }
+    <!-- Step 1: Tokenize card -->
+    <div class="card">
+      <h2><span class="step-label">1</span> Tokenize card (get TOK_TOKEN)</h2>
+      <div class="test-card">
+        <strong>Sandbox test card</strong>
+        <table>
+          <tr>
+            <td>Card number</td>
+            <td>
+              <code>4245757666349685</code
+              ><button
+                class="copy-btn"
+                onclick="copyText('4245757666349685', this)"
+              >
+                copy
+              </button>
+            </td>
+          </tr>
+          <tr>
+            <td>Expiry</td>
+            <td>
+              <code>12/29</code
+              ><button class="copy-btn" onclick="copyText('12/29', this)">
+                copy
+              </button>
+            </td>
+          </tr>
+          <tr>
+            <td>CVV</td>
+            <td>
+              <code>123</code
+              ><button class="copy-btn" onclick="copyText('123', this)">
+                copy
+              </button>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="field">
+        <label>Card number</label>
+        <div id="payu-card-number"></div>
+      </div>
+      <div class="field">
+        <label>Expiry date</label>
+        <div id="payu-card-date"></div>
+      </div>
+      <div class="field">
+        <label>CVV</label>
+        <div id="payu-card-cvv"></div>
+      </div>
+      <button id="btn-tokenize" onclick="doTokenize()">Tokenize card</button>
+      <div class="result-box" id="tok-result"></div>
+    </div>
 
-      const btn = document.getElementById('btn-order');
-      btn.disabled = true;
+    <!-- Step 2: Create order -->
+    <div class="card">
+      <h2>
+        <span class="step-label">2</span> Create order &amp; get 3DS redirect
+      </h2>
+      <div class="field">
+        <label>TOK_TOKEN (filled automatically after step 1)</label>
+        <input type="text" id="tok-token-input" placeholder="TOKC_…" />
+      </div>
+      <button id="btn-order" onclick="doCreateOrder()">Create order</button>
+      <div class="result-box" id="order-result"></div>
+      <div id="redirect-link"></div>
+    </div>
 
-      const linkContainer = document.getElementById('redirect-link');
-      linkContainer.style.display = 'none';
-      linkContainer.textContent = '';
+    <!-- Step 3: Retrieve TOKC -->
+    <div class="card">
+      <h2>
+        <span class="step-label">3</span> Retrieve TOKC_ (after completing 3DS)
+      </h2>
+      <p style="font-size: 0.85rem; color: #666; margin-bottom: 0.8rem">
+        Complete the 3DS flow in the link above first, then click below.
+      </p>
+      <button id="btn-tokc" onclick="doGetTokc()">Get TOKC_</button>
+      <div class="result-box" id="tokc-result"></div>
+    </div>
 
-      try {
-        const res  = await fetch('/api/create-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tokToken }),
+    <!-- Step 4: Charge TOKC_ -->
+    <div class="card">
+      <h2>
+        <span class="step-label">4</span> Charge TOKC_ (recurring — no user
+        interaction)
+      </h2>
+      <p style="font-size: 0.85rem; color: #666; margin-bottom: 0.8rem">
+        Backend-only payment. No 3DS, no redirect — simulates a subscription
+        charge.
+      </p>
+      <div class="field">
+        <label>TOKC_ token (filled automatically after step 3)</label>
+        <input type="text" id="tokc-token-input" placeholder="TOKC_…" />
+      </div>
+      <div class="field">
+        <label
+          >Amount (lowest denomination — e.g. <code>1000</code> = 10.00
+          CZK)</label
+        >
+        <input type="text" id="charge-amount-input" value="1000" />
+      </div>
+      <button id="btn-charge" onclick="doChargetokc()">Charge</button>
+      <div class="result-box" id="charge-result"></div>
+    </div>
+
+    <script src="https://secure.snd.payu.com/javascript/sdk"></script>
+    <script>
+      function copyText(text, btn) {
+        navigator.clipboard.writeText(text).then(() => {
+          const orig = btn.textContent;
+          btn.textContent = "copied!";
+          setTimeout(() => {
+            btn.textContent = orig;
+          }, 1200);
         });
-        const data = await res.json();
-        showResult('order-result', data);
+      }
 
-        if (data.redirectUri) {
-          const strong = document.createElement('strong');
-          strong.textContent = 'Open in browser to complete 3DS: ';
+      let payuSdkForms, secureForms;
 
-          const a = document.createElement('a');
-          a.href   = data.redirectUri;   // safe: setAttribute via property
-          a.target = '_blank';
-          a.rel    = 'noopener noreferrer';
-          a.textContent = data.redirectUri;
+      fetch("/api/config")
+        .then((r) => r.json())
+        .then(({ posId }) => {
+          payuSdkForms = PayU(posId, { dev: true });
+          secureForms = payuSdkForms.secureForms();
+          secureForms
+            .add("number", { placeholder: "4245757666349685" })
+            .render("#payu-card-number");
+          secureForms
+            .add("date", { placeholder: "12/29" })
+            .render("#payu-card-date");
+          secureForms
+            .add("cvv", { placeholder: "123" })
+            .render("#payu-card-cvv");
+        })
+        .catch((err) =>
+          showResult("tok-result", { error: "Could not load config: " + err }),
+        );
 
-          linkContainer.appendChild(strong);
-          linkContainer.appendChild(a);
-          linkContainer.style.display = 'block';
+      function showResult(id, data) {
+        const el = document.getElementById(id);
+        el.textContent =
+          typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        el.className = "result-box visible";
+      }
+
+      // Step 1
+      async function doTokenize() {
+        const btn = document.getElementById("btn-tokenize");
+        btn.disabled = true;
+        try {
+          const result = await payuSdkForms.tokenize("MULTI");
+          showResult("tok-result", result);
+          const token = result.body && result.body.token;
+          if (result.status === "SUCCESS" && token) {
+            document.getElementById("tok-token-input").value = token;
+          }
+        } catch (e) {
+          showResult("tok-result", { error: String(e) });
+        } finally {
+          btn.disabled = false;
         }
-      } catch (e) {
-        showResult('order-result', { error: String(e) });
-      } finally {
-        btn.disabled = false;
       }
-    }
 
-    // Step 3
-    async function doGetTokc() {
-      const btn = document.getElementById('btn-tokc');
-      btn.disabled = true;
-      try {
-        const res  = await fetch('/api/get-tokc', { method: 'POST' });
-        const data = await res.json();
-        showResult('tokc-result', data);
-      } catch (e) {
-        showResult('tokc-result', { error: String(e) });
-      } finally {
-        btn.disabled = false;
+      // Step 2
+      async function doCreateOrder() {
+        const tokToken = document
+          .getElementById("tok-token-input")
+          .value.trim();
+        if (!tokToken) {
+          alert("Please tokenize the card first (step 1)");
+          return;
+        }
+
+        const btn = document.getElementById("btn-order");
+        btn.disabled = true;
+
+        const linkContainer = document.getElementById("redirect-link");
+        linkContainer.style.display = "none";
+        linkContainer.textContent = "";
+
+        try {
+          const res = await fetch("/api/create-order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tokToken }),
+          });
+          const data = await res.json();
+          showResult("order-result", data);
+
+          if (data.redirectUri) {
+            const strong = document.createElement("strong");
+            strong.textContent = "Open in browser to complete 3DS: ";
+
+            const a = document.createElement("a");
+            a.href = data.redirectUri; // safe: setAttribute via property
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.textContent = data.redirectUri;
+
+            linkContainer.appendChild(strong);
+            linkContainer.appendChild(a);
+            linkContainer.style.display = "block";
+          }
+        } catch (e) {
+          showResult("order-result", { error: String(e) });
+        } finally {
+          btn.disabled = false;
+        }
       }
-    }
-  </script>
-</body>
+
+      // Step 3
+      async function doGetTokc() {
+        const btn = document.getElementById("btn-tokc");
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/get-tokc", { method: "POST" });
+          const data = await res.json();
+          showResult("tokc-result", data);
+          if (data.tokc) {
+            document.getElementById("tokc-token-input").value = data.tokc;
+          }
+        } catch (e) {
+          showResult("tokc-result", { error: String(e) });
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      // Step 4
+      async function doChargetokc() {
+        const tokcToken = document
+          .getElementById("tokc-token-input")
+          .value.trim();
+        const amount = document
+          .getElementById("charge-amount-input")
+          .value.trim();
+        if (!tokcToken) {
+          alert("Please retrieve TOKC_ first (step 3)");
+          return;
+        }
+        if (!amount) {
+          alert("Please enter an amount");
+          return;
+        }
+
+        const btn = document.getElementById("btn-charge");
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/charge-tokc", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tokcToken, amount }),
+          });
+          const data = await res.json();
+          showResult("charge-result", data);
+        } catch (e) {
+          showResult("charge-result", { error: String(e) });
+        } finally {
+          btn.disabled = false;
+        }
+      }
+    </script>
+  </body>
 </html>

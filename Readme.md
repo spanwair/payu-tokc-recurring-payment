@@ -26,13 +26,14 @@
 
 ### What it does
 
-The UI walks you through the full TOKC flow in three steps:
+The UI walks you through the full TOKC flow in four steps:
 
-| Step | Action                                                                     |
-| ---- | -------------------------------------------------------------------------- |
-| 1    | Tokenize a card → get `TOK_TOKEN`                                          |
-| 2    | Create an order with that token → get a 3DS redirect URL                   |
-| 3    | After completing 3DS in the browser → retrieve the `TOKC_` recurring token |
+| Step | Action                                                                            |
+| ---- | --------------------------------------------------------------------------------- |
+| 1    | Tokenize a card → get `TOK_TOKEN`                                                 |
+| 2    | Create an order with that token → get a 3DS redirect URL                          |
+| 3    | After completing 3DS in the browser → retrieve the `TOKC_` recurring token        |
+| 4    | Charge the `TOKC_` token with any amount → backend-only, no user interaction      |
 
 A sandbox test card cheat sheet is shown directly on the page (copy buttons included).
 
@@ -58,6 +59,8 @@ A sandbox test card cheat sheet is shown directly on the page (copy buttons incl
 - it will retrieve URL (click it) and agree using POSITIVE button
 - OPTIONAL - call `payu_step2_retrieve_order.sh` (retrieve order, only check)
 - call `payu_step3_retrieve_tokc.sh` >> This will response TOKC which is used for recurring payments
+- copy the `TOKC_` value to `.env` as `TOKC_TOKEN` (and set `CHARGE_AMOUNT`, e.g. `1000` = 10.00 CZK)
+- call `payu_step4_charge_tokc.sh` >> This performs a backend-only recurring charge (no 3DS, no redirect). Response contains `ORDER_ID` and `STATUS` (expect `WARNING_CONTINUE_3DS` on first sandbox charge, then `COMPLETED` on subsequent ones)
 
 Reference:
 TopicURLCharging a TOKC\_ tokenhttps://developers.payu.com/europe/docs/payment-solutions/cards/tokenization/charge-token/Creating tokenshttps://developers.payu.com/europe/docs/payment-solutions/cards/tokenization/create-token/Recurring paymentshttps://developers.payu.com/en/recurring.html

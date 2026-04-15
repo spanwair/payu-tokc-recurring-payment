@@ -8,6 +8,7 @@
  *   GET  /api/config        — return POS_ID from ../.env
  *   POST /api/create-order  { tokToken }  — writes TOK_TOKEN to .env, runs payu_test_recurring_token.sh
  *   POST /api/get-tokc      {}            — runs payu_step3_retrieve_tokc.sh
+ *   POST /api/charge-tokc  { tokcToken, amount } — writes vars to .env, runs payu_step4_charge_tokc.sh
  */
 
 const http = require('http');
@@ -28,7 +29,7 @@ function readEnvVar(key) {
   return m ? m[1] : null;
 }
 
-function writeTokToken(tokToken) {
+function writeEnvVar(key, value) {
   if (!fs.existsSync(ENV_FILE)) {
     throw new Error(
       '.env file not found in parent directory.\n' +
@@ -36,12 +37,13 @@ function writeTokToken(tokToken) {
     );
   }
   let content = fs.readFileSync(ENV_FILE, 'utf8');
-  const line  = `TOK_TOKEN="${tokToken}"`;
-  content = /^TOK_TOKEN=/m.test(content)
-    ? content.replace(/^TOK_TOKEN=.*/m, line)
-    : line + '\n' + content;
+  const line  = `${key}="${value}"`;
+  const re    = new RegExp(`^${key}=.*`, 'm');
+  content = re.test(content) ? content.replace(re, line) : line + '\n' + content;
   fs.writeFileSync(ENV_FILE, content);
 }
+
+function writeTokToken(tokToken) { writeEnvVar('TOK_TOKEN', tokToken); }
 
 // ── Script runner (execFile — no shell injection) ─────────────────────────────
 
@@ -64,6 +66,13 @@ function parseCreateOrderOutput(stdout) {
 
 function parseTokcOutput(stdout) {
   return (stdout.match(/TOKC_[A-Za-z0-9_-]+/) || [])[0] || null;
+}
+
+function parseChargeOutput(stdout) {
+  const orderId     = (stdout.match(/ORDER_ID=(\S+)/)     || [])[1] || null;
+  const status      = (stdout.match(/STATUS=(\S+)/)        || [])[1] || null;
+  const statusDesc  = (stdout.match(/STATUS_DESC=(\S+)/)   || [])[1] || null;
+  return { orderId, status, statusDesc };
 }
 
 // ── HTTP server ───────────────────────────────────────────────────────────────
@@ -149,6 +158,37 @@ const server = http.createServer((req, res) => {
 
       console.log('[api] TOKC_:', tokc);
       json({ tokc, log: stdout });
+    });
+    return;
+  }
+
+  // ── POST /api/charge-tokc ─────────────────────────────────────────────────
+  if (req.method === 'POST' && url === '/api/charge-tokc') {
+    withBody(async ({ tokcToken, amount }) => {
+      if (!tokcToken) { json({ error: 'tokcToken is required' }, 400); return; }
+      if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        json({ error: 'amount must be a positive integer (lowest denomination, e.g. 1000 = 10.00 CZK)' }, 400);
+        return;
+      }
+
+      try {
+        writeEnvVar('TOKC_TOKEN',    tokcToken);
+        writeEnvVar('CHARGE_AMOUNT', String(amount));
+      } catch (e) {
+        json({ error: e.message }, 500); return;
+      }
+
+      console.log('[api] Running payu_step4_charge_tokc.sh …');
+      const { stdout, stderr } = await runScript('payu_step4_charge_tokc.sh');
+      const parsed = parseChargeOutput(stdout);
+
+      if (!parsed.orderId) {
+        json({ error: 'Could not parse script output', raw: stdout, stderr }, 500);
+        return;
+      }
+
+      console.log('[api] ORDER_ID:', parsed.orderId, '| STATUS:', parsed.status);
+      json({ ...parsed, log: stdout });
     });
     return;
   }
