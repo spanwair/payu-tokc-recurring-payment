@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <script src="https://secure.snd.payu.com/javascript/sdk"></script>
+  </head>
+  <body>
+    <div id="payu-card-number"></div>
+    <div id="payu-card-date"></div>
+    <div id="payu-card-cvv"></div>
+    <button onclick="tokenize()">Tokenize</button>
+    <pre id="result"></pre>
+
+    <script>
+      var payuSdkForms = PayU("511071", { dev: true });
+      var secureForms = payuSdkForms.secureForms();
+      secureForms
+        .add("number", { placeholder: "4245757666349685" })
+        .render("#payu-card-number");
+      secureForms
+        .add("date", { placeholder: "12/29" })
+        .render("#payu-card-date");
+      secureForms.add("cvv", { placeholder: "123" }).render("#payu-card-cvv");
+
+      function tokenize() {
+        payuSdkForms.tokenize("MULTI").then(function (result) {
+          document.getElementById("result").innerText = JSON.stringify(
+            result,
+            null,
+            2,
+          );
+        });
+      }
+    </script>
+  </body>
+</html>
